@@ -1,6 +1,7 @@
 [submodule "lib/pawn"]
 	path = lib/pawn
-	url = https://github.com/openmultiplayer/compiler.git
+	url = https://github.com/itsneufox/compiler.git
+	branch = variadic-args
 [submodule "lib/pawn-natives"]
 	path = lib/pawn-natives
 	url = https://github.com/openmultiplayer/pawn-natives.git
