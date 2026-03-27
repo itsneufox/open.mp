@@ -18,9 +18,9 @@
 // into the existing pawn_Script_CallAll / pawn_Script_Call implementations.
 
 #include "sdk.hpp"
+#include "../Types.hpp"
 #include "../../format.hpp"
 #include "../../utils.hpp"
-#include <amx/amx.h>
 #include <vector>
 
 // Initialise a va_list from the calling function's vararg frame.
