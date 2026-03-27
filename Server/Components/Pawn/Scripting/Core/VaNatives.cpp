@@ -170,7 +170,7 @@ SCRIPT_API(va_call_remote, int(cell const* funcname, cell const* fmt, cell const
 	AMX* amx = GetAMX();
 	cell const* params = GetParams();
 	auto synthetic = va_build_call_params(amx, params, va);
-	return (int)pawn_Script_CallAll(amx, synthetic.data());
+	return (int)utils::pawn_Script_CallAll(amx, synthetic.data());
 }
 
 // ---------------------------------------------------------------------------
@@ -182,5 +182,5 @@ SCRIPT_API(va_call_local, int(cell const* funcname, cell const* fmt, cell const*
 	AMX* amx = GetAMX();
 	cell const* params = GetParams();
 	auto synthetic = va_build_call_params(amx, params, va);
-	return (int)pawn_Script_Call(amx, synthetic.data());
+	return (int)utils::pawn_Script_Call(amx, synthetic.data());
 }
