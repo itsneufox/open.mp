@@ -6,7 +6,7 @@
  *  The original code is copyright (c) 2022, open.mp team and contributors.
  */
 
-// Variadic argument list natives: va_start, va_arg, va_count, va_format,
+// Variadic argument list natives: va_init, va_get, va_count, va_format,
 // va_call_remote, va_call_local.
 // These work with the compiler's ... spread operator (opt-in via -V / #pragma variadics).
 // A va_list is a 2-cell array: { base_addr, count_bytes } where base_addr is an AMX data
@@ -26,7 +26,8 @@
 // Initialise a va_list from the calling function's vararg frame.
 // skip: number of fixed (non-variadic) parameters in the calling function to skip over.
 // The resulting va[] will point at the first argument after those skipped cells.
-SCRIPT_API(va_start, bool(cell* va, int skip))
+// Named va_init (not va_start) to avoid colliding with the C standard library macro.
+SCRIPT_API(va_init, bool(cell* va, int skip))
 {
 	AMX* amx = GetAMX();
 	AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
@@ -54,7 +55,8 @@ SCRIPT_API(va_start, bool(cell* va, int skip))
 
 // Read one cell from a va_list at the given zero-based index.
 // Returns 0 if index is out of range.
-SCRIPT_API(va_arg, cell(cell const* va, int index))
+// Named va_get (not va_arg) to avoid colliding with the C standard library macro.
+SCRIPT_API(va_get, cell(cell const* va, int index))
 {
 	AMX* amx = GetAMX();
 	AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
