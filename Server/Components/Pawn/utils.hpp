@@ -780,6 +780,165 @@ inline cell AMX_NATIVE_CALL pawn_Script_GetID(AMX* amx, cell const* params)
 	return PawnManager::Get()->IDFromAMX(amx);
 }
 
+// ---------------------------------------------------------------------------
+// va_* natives — variadic argument list helpers.
+// A va_list is a 2-cell Pawn array: { base_addr, count_bytes }.
+// base_addr is an AMX data offset to the first captured vararg cell.
+// The cells stored there are by-reference AMX addresses (same ABI as
+// CallRemoteFunction arguments), so they can be forwarded directly to
+// pawn_Script_Call / pawn_Script_CallAll and atcprintf.
+// ---------------------------------------------------------------------------
+
+// Helper: build synthetic params for pawn_Script_Call / pawn_Script_CallAll.
+//   synthetic[0] = (2 + count) * sizeof(cell)
+//   synthetic[1] = funcname AMX addr (from orig_params[1])
+//   synthetic[2] = fmt AMX addr     (from orig_params[2])
+//   synthetic[3+i] = i-th va cell   (AMX addr of the i-th forwarded argument)
+inline std::vector<cell> va_build_call_params(AMX* amx, cell const* orig_params, cell const* va)
+{
+	AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
+	unsigned char* data = (unsigned char*)amx->base + hdr->dat;
+	cell base_addr = va[0];
+	cell count_bytes = va[1];
+	int count = (int)(count_bytes / sizeof(cell));
+	std::vector<cell> synthetic(3 + count);
+	synthetic[0] = (cell)((2 + count) * (int)sizeof(cell));
+	synthetic[1] = orig_params[1];
+	synthetic[2] = orig_params[2];
+	for (int i = 0; i < count; i++)
+		synthetic[3 + i] = *(cell*)(data + base_addr + i * sizeof(cell));
+	return synthetic;
+}
+
+// Initialise a va_list from the calling Pawn function's vararg frame.
+//   params[1] = AMX addr of the va[2] output array
+//   params[2] = number of fixed (non-...) parameters to skip (default 0)
+inline cell AMX_NATIVE_CALL pawn_va_init(AMX* amx, cell const* params)
+{
+	AMX_MIN_PARAMETERS("va_init", params, 1);
+	AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
+	unsigned char* data = (unsigned char*)amx->base + hdr->dat;
+	int skip = (amx_NumParams(params) >= 2) ? (int)params[2] : 0;
+	// amx->frm is the Pawn frame of the function that called this native.
+	// Layout: [frm+0]=prev_frm, [frm+4]=ret_addr, [frm+8]=arg_bytes, [frm+12]=first_arg
+	cell frm = amx->frm;
+	cell arg_bytes = *(cell*)(data + frm + 2 * sizeof(cell));
+	cell skip_bytes = (cell)(skip * (int)sizeof(cell));
+	if (skip_bytes > arg_bytes)
+		skip_bytes = arg_bytes;
+	cell* va_out;
+	if (amx_GetAddr(amx, params[1], &va_out) != AMX_ERR_NONE || va_out == nullptr)
+		return 0;
+	va_out[0] = frm + 3 * (cell)sizeof(cell) + skip_bytes; // base_addr
+	va_out[1] = arg_bytes - skip_bytes; // count_bytes
+	return 1;
+}
+
+// Read one cell from a va_list by zero-based index.
+//   params[1] = AMX addr of va[]
+//   params[2] = zero-based index
+inline cell AMX_NATIVE_CALL pawn_va_get(AMX* amx, cell const* params)
+{
+	AMX_CHECK_PARAMETERS("va_get", params, 2);
+	AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
+	unsigned char* data = (unsigned char*)amx->base + hdr->dat;
+	cell* va;
+	if (amx_GetAddr(amx, params[1], &va) != AMX_ERR_NONE || va == nullptr)
+		return 0;
+	cell base_addr = va[0];
+	cell count_bytes = va[1];
+	cell offset = (cell)((int)params[2] * (int)sizeof(cell));
+	if (offset < 0 || offset >= count_bytes)
+		return 0;
+	// Each frame slot is a by-reference AMX address; dereference to get the value.
+	cell ref = *(cell*)(data + base_addr + offset);
+	return *(cell*)(data + ref);
+}
+
+// Return the number of cells in a va_list.
+//   params[1] = AMX addr of va[]
+inline cell AMX_NATIVE_CALL pawn_va_count(AMX* amx, cell const* params)
+{
+	AMX_CHECK_PARAMETERS("va_count", params, 1);
+	cell* va;
+	if (amx_GetAddr(amx, params[1], &va) != AMX_ERR_NONE || va == nullptr)
+		return 0;
+	return (cell)(va[1] / sizeof(cell));
+}
+
+// Format a string using a va_list as the argument source.
+//   params[1] = AMX addr of dest[]
+//   params[2] = size (max chars including NUL)
+//   params[3] = AMX addr of fmt string
+//   params[4] = AMX addr of va[]
+inline cell AMX_NATIVE_CALL pawn_va_format(AMX* amx, cell const* params)
+{
+	AMX_CHECK_PARAMETERS("va_format", params, 4);
+	int size = (int)params[2];
+	if (size <= 0)
+		return 0;
+	AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
+	unsigned char* data = (unsigned char*)amx->base + hdr->dat;
+	cell* cinput;
+	if (amx_GetAddr(amx, params[3], &cinput) != AMX_ERR_NONE || cinput == nullptr)
+		return 0;
+	cell* va;
+	if (amx_GetAddr(amx, params[4], &va) != AMX_ERR_NONE || va == nullptr)
+		return 0;
+	cell base_addr = va[0];
+	cell count_bytes = va[1];
+	int count = (int)(count_bytes / sizeof(cell));
+	// Build synthetic params[1..count] = AMX addresses of each vararg,
+	// matching what atcprintf expects starting at param index 1.
+	std::vector<cell> synthetic(count + 1);
+	synthetic[0] = count_bytes;
+	for (int i = 0; i < count; i++)
+		synthetic[i + 1] = *(cell*)(data + base_addr + i * sizeof(cell));
+	cell staticOutput[4096];
+	cell* output = staticOutput;
+	std::unique_ptr<cell[]> dynamicOutput;
+	if (size > (int)(sizeof(staticOutput) / sizeof(cell)))
+	{
+		dynamicOutput = std::make_unique<cell[]>(size);
+		output = dynamicOutput.get();
+	}
+	int param = 1;
+	size_t len = atcprintf(output, size - 1, cinput, amx, synthetic.data(), &param);
+	cell* coutput;
+	if (amx_GetAddr(amx, params[1], &coutput) != AMX_ERR_NONE || coutput == nullptr)
+		return 0;
+	memcpy(coutput, output, (len + 1) * sizeof(cell));
+	return 1;
+}
+
+// Equivalent to CallRemoteFunction but driven by a va_list.
+//   params[1] = AMX addr of funcname string
+//   params[2] = AMX addr of fmt string
+//   params[3] = AMX addr of va[]
+inline cell AMX_NATIVE_CALL pawn_va_call_remote(AMX* amx, cell const* params)
+{
+	AMX_CHECK_PARAMETERS("va_call_remote", params, 3);
+	cell* va;
+	if (amx_GetAddr(amx, params[3], &va) != AMX_ERR_NONE || va == nullptr)
+		return 0;
+	auto synthetic = va_build_call_params(amx, params, va);
+	return pawn_Script_CallAll(amx, synthetic.data());
+}
+
+// Equivalent to CallLocalFunction but driven by a va_list.
+//   params[1] = AMX addr of funcname string
+//   params[2] = AMX addr of fmt string
+//   params[3] = AMX addr of va[]
+inline cell AMX_NATIVE_CALL pawn_va_call_local(AMX* amx, cell const* params)
+{
+	AMX_CHECK_PARAMETERS("va_call_local", params, 3);
+	cell* va;
+	if (amx_GetAddr(amx, params[3], &va) != AMX_ERR_NONE || va == nullptr)
+		return 0;
+	auto synthetic = va_build_call_params(amx, params, va);
+	return pawn_Script_Call(amx, synthetic.data());
+}
+
 #ifdef WIN32
 
 #include <Shlwapi.h>
