@@ -19,6 +19,45 @@
 
 namespace pawn_natives
 {
+// Mutable cell* — gives a writable pointer into AMX data for array output params.
+template <>
+class ParamCast<cell*>
+{
+public:
+	ParamCast(AMX* amx, cell* params, int idx)
+	{
+		cell* cptr;
+		amx_GetAddr(amx, params[idx], &cptr);
+		if (cptr == nullptr)
+			error_ = true;
+		else
+			value_ = cptr;
+	}
+
+	~ParamCast()
+	{
+	}
+
+	ParamCast(ParamCast<cell*> const&) = delete;
+	ParamCast(ParamCast<cell*>&&) = delete;
+
+	operator cell*()
+	{
+		return value_;
+	}
+
+	bool Error() const
+	{
+		return error_;
+	}
+
+	static constexpr int Size = 1;
+
+private:
+	cell* value_ = nullptr;
+	bool error_ = false;
+};
+
 template <>
 class ParamCast<PawnScript&>
 {

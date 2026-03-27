@@ -453,12 +453,6 @@ void PawnManager::openAMX(PawnScript& script, bool isEntryScript, bool restartin
 	script.Register("format", &utils::pawn_format);
 	script.Register("printf", &utils::pawn_printf);
 	script.Register("Script_GetID", &utils::pawn_Script_GetID);
-	script.Register("va_init", &utils::pawn_va_init);
-	script.Register("va_get", &utils::pawn_va_get);
-	script.Register("va_count", &utils::pawn_va_count);
-	script.Register("va_format", &utils::pawn_va_format);
-	script.Register("va_call_remote", &utils::pawn_va_call_remote);
-	script.Register("va_call_local", &utils::pawn_va_call_local);
 	script.Register("SetTimer", &utils::pawn_settimer);
 	script.Register("SetTimerEx", &utils::pawn_settimerex);
 	script.Register("KillTimer", &utils::pawn_killtimer);
