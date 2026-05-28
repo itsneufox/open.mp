@@ -52,6 +52,11 @@ namespace
 		return std::max(current - step, target);
 	}
 
+	Vector3 directionFromGTAAngle(float angle)
+	{
+		const float radians = (angle - 270.0f) * static_cast<float>(M_PI) / 180.0f;
+		return { cosf(radians), sinf(radians), 0.0f };
+	}
 }
 
 NPC::NPC(NPCComponent* component, IPlayer* playerPtr)
@@ -2668,9 +2673,16 @@ void NPC::advance(TimePoint now)
 
 				const float speedStep = (targetSpeed > velocityLength ? DriveAcceleration : DriveBraking) * deltaTimeSEC / 1000.0f;
 				const float newSpeed = approachFloat(velocityLength, targetSpeed, speedStep);
+				Vector3 driveDirection = directionFromGTAAngle(rotation.z);
+				driveDirection.z = direction.z;
+				const float driveDirectionLength = glm::length(driveDirection);
+				if (driveDirectionLength > FLT_EPSILON)
+				{
+					driveDirection /= driveDirectionLength;
+				}
 
-				velocity_ = direction * newSpeed;
-				auto travelled = direction * newSpeed * deltaTimeMS;
+				velocity_ = driveDirection * newSpeed;
+				auto travelled = driveDirection * newSpeed * deltaTimeMS;
 				if (glm::length(travelled) >= distanceToTarget)
 				{
 					position_ = targetPosition_;
