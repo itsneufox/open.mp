@@ -122,6 +122,39 @@ bool NPCNode::initialize(ICore* core)
 		}
 	}
 
+	file.seekg(768, std::ios::cur);
+	if (!file)
+	{
+		return false;
+	}
+
+	naviLinkNodes_.resize(nodeHeader_.linksNumber);
+	if (nodeHeader_.linksNumber > 0)
+	{
+		if (!file.read(reinterpret_cast<char*>(naviLinkNodes_.data()), nodeHeader_.linksNumber * sizeof(uint16_t)))
+		{
+			return false;
+		}
+	}
+
+	linkLengths_.resize(nodeHeader_.linksNumber);
+	if (nodeHeader_.linksNumber > 0)
+	{
+		if (!file.read(reinterpret_cast<char*>(linkLengths_.data()), nodeHeader_.linksNumber * sizeof(uint8_t)))
+		{
+			return false;
+		}
+	}
+
+	intersectionFlags_.resize(nodeHeader_.linksNumber);
+	if (nodeHeader_.linksNumber > 0)
+	{
+		if (!file.read(reinterpret_cast<char*>(intersectionFlags_.data()), nodeHeader_.linksNumber * sizeof(uint8_t)))
+		{
+			return false;
+		}
+	}
+
 	file.close();
 
 	if (!pathNodes_.empty())
@@ -229,6 +262,86 @@ Vector3 NPCNode::getPosition()
 	return normalPosition;
 }
 
+Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
+{
+	if (!initialized_ || currentPointId_ >= pathNodes_.size())
+	{
+		return Vector3(0.0f, 0.0f, 0.0f);
+	}
+
+	const PathNode& targetNode = pathNodes_[currentPointId_];
+	Vector3 position = Vector3(
+		static_cast<float>(targetNode.positionX) / 8.0f,
+		static_cast<float>(targetNode.positionY) / 8.0f,
+		static_cast<float>(targetNode.positionZ) / 8.0f + 1.2f);
+
+	if (fromPointId >= pathNodes_.size() || currentLinkId_ >= naviLinkNodes_.size())
+	{
+		return position;
+	}
+
+	const uint16_t naviLink = naviLinkNodes_[currentLinkId_];
+	const uint16_t naviAreaId = static_cast<uint16_t>((naviLink >> 10) & 0x3F);
+	const uint16_t naviNodeId = static_cast<uint16_t>(naviLink & 0x03FF);
+	if (naviAreaId != nodeId_ || naviNodeId >= naviNodes_.size())
+	{
+		return position;
+	}
+
+	const NaviNode& naviNode = naviNodes_[naviNodeId];
+	Vector2 naviDirection(static_cast<float>(static_cast<int8_t>(naviNode.directionX)) / 100.0f, static_cast<float>(static_cast<int8_t>(naviNode.directionY)) / 100.0f);
+	float directionLength = glm::length(naviDirection);
+	if (directionLength <= 0.0001f)
+	{
+		return position;
+	}
+	naviDirection /= directionLength;
+
+	const PathNode& fromNode = pathNodes_[fromPointId];
+	Vector2 segmentDirection(
+		static_cast<float>(targetNode.positionX - fromNode.positionX),
+		static_cast<float>(targetNode.positionY - fromNode.positionY));
+	float segmentLength = glm::length(segmentDirection);
+	if (segmentLength <= 0.0001f)
+	{
+		return position;
+	}
+	segmentDirection /= segmentLength;
+
+	const bool forward = glm::dot(segmentDirection, naviDirection) >= 0.0f;
+	const uint32_t naviFlags = naviNode.flags;
+	const int leftLanes = static_cast<int>((naviFlags >> 8) & 0x7);
+	const int rightLanes = static_cast<int>((naviFlags >> 11) & 0x7);
+	const int laneCount = forward ? rightLanes : leftLanes;
+	if (laneCount <= 0)
+	{
+		return position;
+	}
+
+	const int totalLanes = leftLanes + rightLanes;
+	const int widthValue = static_cast<int>(naviFlags & 0xFF);
+	float laneWidth = 3.5f;
+	if (widthValue > 0 && totalLanes > 0)
+	{
+		laneWidth = (static_cast<float>(widthValue) / 8.0f) / static_cast<float>(totalLanes);
+		if (laneWidth < 2.5f)
+		{
+			laneWidth = 2.5f;
+		}
+		else if (laneWidth > 4.5f)
+		{
+			laneWidth = 4.5f;
+		}
+	}
+
+	const Vector2 rightOfNavi(naviDirection.y, -naviDirection.x);
+	const float side = forward ? 1.0f : -1.0f;
+	const Vector2 laneOffset = rightOfNavi * side * (laneWidth * 0.5f);
+	position.x += laneOffset.x;
+	position.y += laneOffset.y;
+	return position;
+}
+
 int NPCNode::getNodesNumber() const
 {
 	return initialized_ ? nodeHeader_.nodesNumber : 0;
@@ -246,6 +359,73 @@ void NPCNode::getHeaderInfo(uint32_t& vehicleNodes, uint32_t& pedNodes, uint32_t
 	{
 		vehicleNodes = pedNodes = naviNodes = 0;
 	}
+}
+
+bool NPCNode::getPathNodeData(uint16_t pointId, NPCPathNodeData& data) const
+{
+	if (!initialized_ || pointId >= pathNodes_.size())
+	{
+		data = NPCPathNodeData();
+		return false;
+	}
+
+	const PathNode& pathNode = pathNodes_[pointId];
+	data.position = Vector3(
+		static_cast<float>(pathNode.positionX) / 8.0f,
+		static_cast<float>(pathNode.positionY) / 8.0f,
+		static_cast<float>(pathNode.positionZ) / 8.0f + 1.2f);
+	data.linkId = pathNode.linkId;
+	data.areaId = pathNode.areaId;
+	data.nodeId = pathNode.nodeId;
+	data.pathWidth = pathNode.pathWidth;
+	data.floodFill = pathNode.nodeType;
+	data.flags = pathNode.flags;
+	return true;
+}
+
+bool NPCNode::getNaviNodeData(uint16_t naviId, NPCNaviNodeData& data) const
+{
+	if (!initialized_ || naviId >= naviNodes_.size())
+	{
+		data = NPCNaviNodeData();
+		return false;
+	}
+
+	const NaviNode& naviNode = naviNodes_[naviId];
+	data.position = Vector2(
+		static_cast<float>(naviNode.positionX) / 8.0f,
+		static_cast<float>(naviNode.positionY) / 8.0f);
+	data.areaId = naviNode.areaId;
+	data.nodeId = naviNode.nodeId;
+	data.directionX = static_cast<int8_t>(naviNode.directionX);
+	data.directionY = static_cast<int8_t>(naviNode.directionY);
+	data.flags = naviNode.flags;
+	return true;
+}
+
+int NPCNode::getLinkCountTotal() const
+{
+	return initialized_ ? static_cast<int>(linkNodes_.size()) : 0;
+}
+
+bool NPCNode::getLinkData(uint16_t linkId, NPCNodeLinkData& data) const
+{
+	if (!initialized_ || linkId >= linkNodes_.size())
+	{
+		data = NPCNodeLinkData();
+		return false;
+	}
+
+	const LinkNode& linkNode = linkNodes_[linkId];
+	const uint16_t naviLink = linkId < naviLinkNodes_.size() ? naviLinkNodes_[linkId] : 0;
+
+	data.areaId = linkNode.areaId;
+	data.nodeId = linkNode.nodeId;
+	data.naviAreaId = static_cast<uint16_t>((naviLink >> 10) & 0x3F);
+	data.naviNodeId = static_cast<uint16_t>(naviLink & 0x03FF);
+	data.length = linkId < linkLengths_.size() ? linkLengths_[linkId] : 0;
+	data.intersectionFlags = linkId < intersectionFlags_.size() ? intersectionFlags_[linkId] : 0;
+	return true;
 }
 
 int NPCNode::getNodeId() const

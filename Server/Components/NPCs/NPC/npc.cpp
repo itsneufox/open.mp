@@ -95,6 +95,7 @@ NPC::NPC(NPCComponent* component, IPlayer* playerPtr)
 	, currentNode_(nullptr)
 	, playingNode_(false)
 	, nodePlayingPaused_(false)
+	, nodeLaneAware_(false)
 	, currentNodePoint_(0)
 	, lastNodePoint_(0)
 	, nodeMoveType_(NPCMoveType_Auto)
@@ -2567,7 +2568,7 @@ void NPC::advance(TimePoint now)
 					currentNodePoint_ = newPoint;
 
 					// Update position and move to new point
-					Vector3 newPosition = currentNode_->getPosition();
+					Vector3 newPosition = nodeLaneAware_ && nodeMoveType_ == NPCMoveType_Drive ? currentNode_->getLaneAwarePosition(lastNodePoint_) : currentNode_->getPosition();
 					move(newPosition, nodeMoveType_, nodeMoveSpeed_, nodeMoveRadius_);
 				}
 				else
@@ -3028,6 +3029,11 @@ void NPC::tick(Microseconds elapsed, TimePoint now)
 
 bool NPC::playNode(int nodeId, NPCMoveType moveType, float moveSpeed, float radius, bool setAngle)
 {
+	return playNodeEx(nodeId, moveType, moveSpeed, radius, setAngle, false);
+}
+
+bool NPC::playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed, float radius, bool setAngle, bool laneAware)
+{
 	if (playback_)
 	{
 		stopPlayback();
@@ -3042,6 +3048,7 @@ bool NPC::playNode(int nodeId, NPCMoveType moveType, float moveSpeed, float radi
 	nodeMoveSpeed_ = moveSpeed;
 	nodeMoveRadius_ = radius;
 	nodeSetAngle_ = setAngle;
+	nodeLaneAware_ = laneAware;
 
 	currentNode_ = npcComponent_->getNodeManager()->getNode(nodeId);
 	if (!currentNode_)
@@ -3062,7 +3069,7 @@ bool NPC::playNode(int nodeId, NPCMoveType moveType, float moveSpeed, float radi
 
 	// Update node point and start movement
 	updateNodePoint(currentNodePoint_);
-	nodePosition = currentNode_->getPosition();
+	nodePosition = nodeLaneAware_ && moveType == NPCMoveType_Drive ? currentNode_->getLaneAwarePosition(lastNodePoint_) : currentNode_->getPosition();
 	move(nodePosition, moveType, moveSpeed, radius);
 
 	return true;
@@ -3092,6 +3099,7 @@ void NPC::stopPlayingNode()
 	nodeMoveSpeed_ = NPC_MOVE_SPEED_AUTO;
 	nodeMoveRadius_ = 0.0f;
 	nodeSetAngle_ = true;
+	nodeLaneAware_ = false;
 	nodeLastPosition_ = Vector3(0.0f, 0.0f, 0.0f);
 
 	if (nodeId >= 0)
@@ -3179,7 +3187,7 @@ bool NPC::updateNodePoint(uint16_t pointId)
 
 	Vector3 position;
 	currentNode_->setPoint(pointId);
-	position = currentNode_->getPosition();
+	position = nodeLaneAware_ && nodeMoveType_ == NPCMoveType_Drive ? currentNode_->getLaneAwarePosition(lastNodePoint_) : currentNode_->getPosition();
 
 	// Update movement destination
 	targetPosition_ = position;

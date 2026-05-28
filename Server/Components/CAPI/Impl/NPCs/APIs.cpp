@@ -963,10 +963,77 @@ OMP_CAPI(NPC_GetNodeInfo, bool(int nodeId, uint32_t* vehicleNodes, uint32_t* ped
 	return false;
 }
 
+OMP_CAPI(NPC_GetNodePointData, bool(int nodeId, int pointId, float* x, float* y, float* z, uint16_t* linkId, uint16_t* areaId, uint16_t* pointNodeId, uint8_t* pathWidth, uint8_t* floodFill, uint32_t* flags))
+{
+	COMPONENT_CHECK_RET(npcs, false);
+	NPCPathNodeData data;
+	if (npcs->getNodePointData(nodeId, static_cast<uint16_t>(pointId), data))
+	{
+		*x = data.position.x;
+		*y = data.position.y;
+		*z = data.position.z;
+		*linkId = data.linkId;
+		*areaId = data.areaId;
+		*pointNodeId = data.nodeId;
+		*pathWidth = data.pathWidth;
+		*floodFill = data.floodFill;
+		*flags = data.flags;
+		return true;
+	}
+	return false;
+}
+
+OMP_CAPI(NPC_GetNaviNodeData, bool(int nodeId, int naviId, float* x, float* y, uint16_t* areaId, uint16_t* pointNodeId, int8_t* directionX, int8_t* directionY, uint32_t* flags))
+{
+	COMPONENT_CHECK_RET(npcs, false);
+	NPCNaviNodeData data;
+	if (npcs->getNaviNodeData(nodeId, static_cast<uint16_t>(naviId), data))
+	{
+		*x = data.position.x;
+		*y = data.position.y;
+		*areaId = data.areaId;
+		*pointNodeId = data.nodeId;
+		*directionX = data.directionX;
+		*directionY = data.directionY;
+		*flags = data.flags;
+		return true;
+	}
+	return false;
+}
+
+OMP_CAPI(NPC_GetNodeLinkCount, int(int nodeId))
+{
+	COMPONENT_CHECK_RET(npcs, 0);
+	return npcs->getNodeLinkCount(nodeId);
+}
+
+OMP_CAPI(NPC_GetNodeLinkData, bool(int nodeId, int linkId, uint16_t* targetAreaId, uint16_t* targetNodeId, uint16_t* naviAreaId, uint16_t* naviNodeId, uint8_t* length, uint8_t* intersectionFlags))
+{
+	COMPONENT_CHECK_RET(npcs, false);
+	NPCNodeLinkData data;
+	if (npcs->getNodeLinkData(nodeId, static_cast<uint16_t>(linkId), data))
+	{
+		*targetAreaId = data.areaId;
+		*targetNodeId = data.nodeId;
+		*naviAreaId = data.naviAreaId;
+		*naviNodeId = data.naviNodeId;
+		*length = data.length;
+		*intersectionFlags = data.intersectionFlags;
+		return true;
+	}
+	return false;
+}
+
 OMP_CAPI(NPC_PlayNode, bool(objectPtr npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle))
 {
 	POOL_ENTITY_RET(npcs, INPC, npc, npc_, false);
 	return npc_->playNode(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle);
+}
+
+OMP_CAPI(NPC_PlayNodeEx, bool(objectPtr npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle, bool laneAware))
+{
+	POOL_ENTITY_RET(npcs, INPC, npc, npc_, false);
+	return npc_->playNodeEx(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle, laneAware);
 }
 
 OMP_CAPI(NPC_StopPlayingNode, bool(objectPtr npc))

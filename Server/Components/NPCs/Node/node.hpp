@@ -71,8 +71,13 @@ public:
 	uint16_t processNodeChange(NPC* npc, uint16_t targetPointId);
 
 	Vector3 getPosition();
+	Vector3 getLaneAwarePosition(uint16_t fromPointId) const;
 	int getNodesNumber() const;
 	void getHeaderInfo(uint32_t& vehicleNodes, uint32_t& pedNodes, uint32_t& naviNodes) const;
+	bool getPathNodeData(uint16_t pointId, NPCPathNodeData& data) const;
+	bool getNaviNodeData(uint16_t naviId, NPCNaviNodeData& data) const;
+	int getLinkCountTotal() const;
+	bool getLinkData(uint16_t linkId, NPCNodeLinkData& data) const;
 
 	int getNodeId() const;
 	uint16_t getLinkId() const;
@@ -97,6 +102,9 @@ private:
 	DynamicArray<PathNode> pathNodes_;
 	DynamicArray<NaviNode> naviNodes_;
 	DynamicArray<LinkNode> linkNodes_;
+	DynamicArray<uint16_t> naviLinkNodes_;
+	DynamicArray<uint8_t> linkLengths_;
+	DynamicArray<uint8_t> intersectionFlags_;
 
 	uint16_t currentPointId_;
 	uint16_t currentLinkId_;

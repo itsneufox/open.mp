@@ -149,6 +149,18 @@ public:
 	/// Get node information (vehicle nodes, pedestrian nodes, navigation nodes)
 	bool getNodeInfo(int nodeId, uint32_t& vehicleNodes, uint32_t& pedNodes, uint32_t& naviNodes) override;
 
+	/// Get full point data from a node file
+	bool getNodePointData(int nodeId, uint16_t pointId, NPCPathNodeData& data) override;
+
+	/// Get full navi node data from a node file
+	bool getNaviNodeData(int nodeId, uint16_t naviId, NPCNaviNodeData& data) override;
+
+	/// Get the total number of links in a node file
+	int getNodeLinkCount(int nodeId) override;
+
+	/// Get link data from a node file
+	bool getNodeLinkData(int nodeId, uint16_t linkId, NPCNodeLinkData& data) override;
+
 	bool emulatePlayerGiveDamageToNPCEvent(IPlayer& player, INPC& npc, float amount, unsigned weapon, BodyPart part, bool callOriginalEvents);
 
 	bool emulatePlayerTakeDamageFromNPCEvent(IPlayer& player, INPC& npc, float amount, unsigned weapon, BodyPart part, bool callOriginalEvents);

@@ -491,6 +491,30 @@ bool NPCComponent::getNodeInfo(int nodeId, uint32_t& vehicleNodes, uint32_t& ped
 	return false;
 }
 
+bool NPCComponent::getNodePointData(int nodeId, uint16_t pointId, NPCPathNodeData& data)
+{
+	NPCNode* node = nodeManager_.getNode(nodeId);
+	return node ? node->getPathNodeData(pointId, data) : false;
+}
+
+bool NPCComponent::getNaviNodeData(int nodeId, uint16_t naviId, NPCNaviNodeData& data)
+{
+	NPCNode* node = nodeManager_.getNode(nodeId);
+	return node ? node->getNaviNodeData(naviId, data) : false;
+}
+
+int NPCComponent::getNodeLinkCount(int nodeId)
+{
+	NPCNode* node = nodeManager_.getNode(nodeId);
+	return node ? node->getLinkCountTotal() : 0;
+}
+
+bool NPCComponent::getNodeLinkData(int nodeId, uint16_t linkId, NPCNodeLinkData& data)
+{
+	NPCNode* node = nodeManager_.getNode(nodeId);
+	return node ? node->getLinkData(linkId, data) : false;
+}
+
 bool NPCComponent::emulatePlayerGiveDamageToNPCEvent(IPlayer& player, INPC& npc, float amount, unsigned weapon, BodyPart part, bool callOriginalEvents)
 {
 	bool eventResult = eventDispatcher.stopAtFalse([&](NPCEventHandler* handler)

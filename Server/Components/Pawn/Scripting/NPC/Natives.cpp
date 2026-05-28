@@ -936,9 +936,88 @@ SCRIPT_API(NPC_GetNodeInfo, bool(int nodeId, int& vehicleNodes, int& pedNodes, i
 	return false;
 }
 
+SCRIPT_API(NPC_GetNodePointData, bool(int nodeId, int pointId, float& x, float& y, float& z, int& linkId, int& areaId, int& pointNodeId, int& pathWidth, int& floodFill, int& flags))
+{
+	auto component = PawnManager::Get()->npcs;
+	if (component)
+	{
+		NPCPathNodeData data;
+		if (component->getNodePointData(nodeId, static_cast<uint16_t>(pointId), data))
+		{
+			x = data.position.x;
+			y = data.position.y;
+			z = data.position.z;
+			linkId = data.linkId;
+			areaId = data.areaId;
+			pointNodeId = data.nodeId;
+			pathWidth = data.pathWidth;
+			floodFill = data.floodFill;
+			flags = static_cast<int>(data.flags);
+			return true;
+		}
+	}
+	return false;
+}
+
+SCRIPT_API(NPC_GetNaviNodeData, bool(int nodeId, int naviId, float& x, float& y, int& areaId, int& pointNodeId, int& directionX, int& directionY, int& flags))
+{
+	auto component = PawnManager::Get()->npcs;
+	if (component)
+	{
+		NPCNaviNodeData data;
+		if (component->getNaviNodeData(nodeId, static_cast<uint16_t>(naviId), data))
+		{
+			x = data.position.x;
+			y = data.position.y;
+			areaId = data.areaId;
+			pointNodeId = data.nodeId;
+			directionX = data.directionX;
+			directionY = data.directionY;
+			flags = static_cast<int>(data.flags);
+			return true;
+		}
+	}
+	return false;
+}
+
+SCRIPT_API(NPC_GetNodeLinkCount, int(int nodeId))
+{
+	auto component = PawnManager::Get()->npcs;
+	if (component)
+	{
+		return component->getNodeLinkCount(nodeId);
+	}
+	return 0;
+}
+
+SCRIPT_API(NPC_GetNodeLinkData, bool(int nodeId, int linkId, int& targetAreaId, int& targetNodeId, int& naviAreaId, int& naviNodeId, int& length, int& intersectionFlags))
+{
+	auto component = PawnManager::Get()->npcs;
+	if (component)
+	{
+		NPCNodeLinkData data;
+		if (component->getNodeLinkData(nodeId, static_cast<uint16_t>(linkId), data))
+		{
+			targetAreaId = data.areaId;
+			targetNodeId = data.nodeId;
+			naviAreaId = data.naviAreaId;
+			naviNodeId = data.naviNodeId;
+			length = data.length;
+			intersectionFlags = data.intersectionFlags;
+			return true;
+		}
+	}
+	return false;
+}
+
 SCRIPT_API(NPC_PlayNode, bool(INPC& npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle))
 {
 	return npc.playNode(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle);
+}
+
+SCRIPT_API(NPC_PlayNodeEx, bool(INPC& npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle, bool laneAware))
+{
+	return npc.playNodeEx(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle, laneAware);
 }
 
 SCRIPT_API(NPC_StopPlayingNode, bool(INPC& npc))

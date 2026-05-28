@@ -228,6 +228,8 @@ public:
 
 	bool playNode(int nodeId, NPCMoveType moveType, float moveSpeed = NPC_MOVE_SPEED_AUTO, float radius = 0.0f, bool setAngle = true) override;
 
+	bool playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed = NPC_MOVE_SPEED_AUTO, float radius = 0.0f, bool setAngle = true, bool laneAware = false) override;
+
 	void stopPlayingNode() override;
 
 	void pausePlayingNode() override;
@@ -543,6 +545,7 @@ private:
 	class NPCNode* currentNode_;
 	bool playingNode_;
 	bool nodePlayingPaused_;
+	bool nodeLaneAware_;
 	uint16_t currentNodePoint_;
 	uint16_t lastNodePoint_;
 	NPCMoveType nodeMoveType_;
