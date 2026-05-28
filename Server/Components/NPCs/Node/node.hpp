@@ -9,6 +9,7 @@
 #pragma once
 
 #include <sdk.hpp>
+#include <Server/Components/NPCs/npcs.hpp>
 #include <fstream>
 
 class NPC;
