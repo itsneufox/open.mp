@@ -22,6 +22,26 @@ namespace
 {
 	constexpr float DriveAcceleration = 4.0f; // GTA units per second squared.
 	constexpr float DriveBraking = 12.0f;
+	constexpr float DriveMinTurnRate = 70.0f; // Degrees per second.
+	constexpr float DriveMaxTurnRate = 210.0f;
+
+	float clampFloat(float value, float min, float max)
+	{
+		return std::max(min, std::min(max, value));
+	}
+
+	float normalizeAngleDelta(float angle)
+	{
+		while (angle > 180.0f)
+		{
+			angle -= 360.0f;
+		}
+		while (angle < -180.0f)
+		{
+			angle += 360.0f;
+		}
+		return angle;
+	}
 
 	float approachFloat(float current, float target, float step)
 	{
@@ -2628,8 +2648,23 @@ void NPC::advance(TimePoint now)
 
 				auto rotation = getRotation().ToEuler();
 				const float desiredAngle = getAngleOfLine(direction.x, direction.y);
-				rotation.z = desiredAngle;
+				const float angleDelta = normalizeAngleDelta(desiredAngle - rotation.z);
+				const float speedPerSecond = velocityLength * 1000.0f;
+				const float turnRate = clampFloat(DriveMaxTurnRate - speedPerSecond * 7.0f, DriveMinTurnRate, DriveMaxTurnRate);
+				const float maxAngleStep = turnRate * deltaTimeSEC;
+				rotation.z += clampFloat(angleDelta, -maxAngleStep, maxAngleStep);
+				if (rotation.z >= 360.0f)
+				{
+					rotation.z -= 360.0f;
+				}
+				else if (rotation.z < 0.0f)
+				{
+					rotation.z += 360.0f;
+				}
 				rotation_ = GTAQuat(rotation);
+
+				const float turnSlowdown = clampFloat(1.0f - (fabsf(angleDelta) / 180.0f) * 0.65f, 0.35f, 1.0f);
+				targetSpeed *= turnSlowdown;
 
 				const float speedStep = (targetSpeed > velocityLength ? DriveAcceleration : DriveBraking) * deltaTimeSEC / 1000.0f;
 				const float newSpeed = approachFloat(velocityLength, targetSpeed, speedStep);
