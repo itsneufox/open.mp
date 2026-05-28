@@ -16,6 +16,48 @@
 #include "../Playback/playback.hpp"
 #include "../Node/node.hpp"
 #include <Server/Components/Vehicles/vehicle_seats.hpp>
+#include <algorithm>
+
+namespace
+{
+	constexpr float DriveAcceleration = 4.0f; // GTA units per second squared.
+	constexpr float DriveBraking = 12.0f;
+	constexpr float DriveMinTurnRate = 70.0f; // Degrees per second.
+	constexpr float DriveMaxTurnRate = 210.0f;
+
+	float clampFloat(float value, float min, float max)
+	{
+		return std::max(min, std::min(max, value));
+	}
+
+	float normalizeAngleDelta(float angle)
+	{
+		while (angle > 180.0f)
+		{
+			angle -= 360.0f;
+		}
+		while (angle < -180.0f)
+		{
+			angle += 360.0f;
+		}
+		return angle;
+	}
+
+	float approachFloat(float current, float target, float step)
+	{
+		if (current < target)
+		{
+			return std::min(current + step, target);
+		}
+		return std::max(current - step, target);
+	}
+
+	Vector3 directionFromGTAAngle(float angle)
+	{
+		const float radians = (angle - 270.0f) * static_cast<float>(M_PI) / 180.0f;
+		return { cosf(radians), sinf(radians), 0.0f };
+	}
+}
 
 NPC::NPC(NPCComponent* component, IPlayer* playerPtr)
 	: footSyncSkipUpdate_(0)
@@ -42,6 +84,7 @@ NPC::NPC(NPCComponent* component, IPlayer* playerPtr)
 	, stopRange_(0.2f)
 	, targetPosition_({ 0.0f, 0.0f, 0.0f })
 	, velocity_({ 0.0f, 0.0f, 0.0f })
+	, targetVelocity_({ 0.0f, 0.0f, 0.0f })
 	, moving_(false)
 	, needsVelocityUpdate_(false)
 	, followingPlayer_(nullptr)
@@ -102,6 +145,7 @@ NPC::NPC(NPCComponent* component, IPlayer* playerPtr)
 	, nodeMoveSpeed_(NPC_MOVE_SPEED_AUTO)
 	, nodeMoveRadius_(0.0f)
 	, nodeSetAngle_(true)
+	, nodeSmoothDriving_(false)
 	, nodeLastPosition_(Vector3(0.0f, 0.0f, 0.0f))
 {
 	// Fill weapon accuracy with 1.0f, let server devs change it with the desired values
@@ -499,17 +543,22 @@ bool NPC::move(Vector3 pos, NPCMoveType moveType, float moveSpeed, float stopRan
 	if (distance > FLT_EPSILON)
 	{
 		front = (pos - position) / distance;
-		auto rotation = getRotation().ToEuler();
-		rotation.z = getAngleOfLine(front.x, front.y);
-		rotation_ = GTAQuat(rotation); // Do this directly, if you use NPC::setRotation it's going to cause recursion
 
 		// Calculate velocity to use on tick
-		velocity_ = front * (moveSpeed_ / 100.0f);
+		targetVelocity_ = front * (moveSpeed_ / 100.0f);
+		if (moveType_ != NPCMoveType_Drive || !playingNode_ || !nodeSmoothDriving_ || !moving_ || glm::length(velocity_) <= FLT_EPSILON)
+		{
+			auto rotation = getRotation().ToEuler();
+			rotation.z = getAngleOfLine(front.x, front.y);
+			rotation_ = GTAQuat(rotation); // Do this directly, if you use NPC::setRotation it's going to cause recursion
+			velocity_ = targetVelocity_;
+		}
 	}
 	else
 	{
 		// If distance is negligible, zero out velocity
 		velocity_ = Vector3(0.0f, 0.0f, 0.0f);
+		targetVelocity_ = Vector3(0.0f, 0.0f, 0.0f);
 	}
 
 	// Set internal variables
@@ -541,6 +590,7 @@ void NPC::stopMove()
 	moveSpeed_ = 0.0f;
 	targetPosition_ = { 0.0f, 0.0f, 0.0f };
 	velocity_ = { 0.0f, 0.0f, 0.0f };
+	targetVelocity_ = { 0.0f, 0.0f, 0.0f };
 	moveType_ = NPCMoveType_None;
 	stopRange_ = 0.2f;
 	followingPlayer_ = nullptr;
@@ -623,10 +673,12 @@ void NPC::setVelocity(Vector3 velocity, bool update)
 	if (moving_ && !update)
 	{
 		velocity_ = velocity;
+		targetVelocity_ = velocity;
 	}
 	else if (!moving_)
 	{
 		velocity_ = velocity;
+		targetVelocity_ = velocity;
 	}
 
 	needsVelocityUpdate_ = update;
@@ -2451,6 +2503,7 @@ void NPC::advance(TimePoint now)
 			moving_ = false;
 			moveSpeed_ = 0.0f;
 			velocity_ = { 0.0f, 0.0f, 0.0f };
+			targetVelocity_ = { 0.0f, 0.0f, 0.0f };
 			upAndDown_ &= ~Key::UP;
 			removeKey(Key::SPRINT);
 			removeKey(Key::WALK);
@@ -2461,6 +2514,7 @@ void NPC::advance(TimePoint now)
 			moving_ = false;
 			moveSpeed_ = 0.0f;
 			velocity_ = { 0.0f, 0.0f, 0.0f };
+			targetVelocity_ = { 0.0f, 0.0f, 0.0f };
 			upAndDown_ &= ~Key::UP;
 			removeKey(Key::SPRINT);
 			removeKey(Key::WALK);
@@ -2549,7 +2603,7 @@ void NPC::advance(TimePoint now)
 							currentNodePoint_ = changedPoint;
 
 							// Update position and move to new point
-							Vector3 newPosition = currentNode_->getPosition();
+							Vector3 newPosition = nodeLaneAware_ && nodeMoveType_ == NPCMoveType_Drive ? currentNode_->getLaneAwarePosition(lastNodePoint_) : currentNode_->getPosition();
 							move(newPosition, nodeMoveType_, nodeMoveSpeed_, nodeMoveRadius_);
 						}
 						else
@@ -2589,8 +2643,60 @@ void NPC::advance(TimePoint now)
 		if (distanceToTarget > FLT_EPSILON)
 		{
 			auto direction = toTarget / distanceToTarget;
-			auto travelled = direction * velocityLength * deltaTimeMS;
-			position_ = position + travelled;
+			if (moveType_ == NPCMoveType_Drive && playingNode_ && nodeSmoothDriving_)
+			{
+				float targetSpeed = glm::length(targetVelocity_);
+				if (targetSpeed <= FLT_EPSILON)
+				{
+					targetSpeed = velocityLength;
+				}
+
+				auto rotation = getRotation().ToEuler();
+				const float desiredAngle = getAngleOfLine(direction.x, direction.y);
+				const float angleDelta = normalizeAngleDelta(desiredAngle - rotation.z);
+				const float speedPerSecond = velocityLength * 1000.0f;
+				const float turnRate = clampFloat(DriveMaxTurnRate - speedPerSecond * 7.0f, DriveMinTurnRate, DriveMaxTurnRate);
+				const float maxAngleStep = turnRate * deltaTimeSEC;
+				rotation.z += clampFloat(angleDelta, -maxAngleStep, maxAngleStep);
+				if (rotation.z >= 360.0f)
+				{
+					rotation.z -= 360.0f;
+				}
+				else if (rotation.z < 0.0f)
+				{
+					rotation.z += 360.0f;
+				}
+				rotation_ = GTAQuat(rotation);
+
+				const float turnSlowdown = clampFloat(1.0f - (fabsf(angleDelta) / 180.0f) * 0.65f, 0.35f, 1.0f);
+				targetSpeed *= turnSlowdown;
+
+				const float speedStep = (targetSpeed > velocityLength ? DriveAcceleration : DriveBraking) * deltaTimeSEC / 1000.0f;
+				const float newSpeed = approachFloat(velocityLength, targetSpeed, speedStep);
+				Vector3 driveDirection = directionFromGTAAngle(rotation.z);
+				driveDirection.z = direction.z;
+				const float driveDirectionLength = glm::length(driveDirection);
+				if (driveDirectionLength > FLT_EPSILON)
+				{
+					driveDirection /= driveDirectionLength;
+				}
+
+				velocity_ = driveDirection * newSpeed;
+				auto travelled = driveDirection * newSpeed * deltaTimeMS;
+				if (glm::length(travelled) >= distanceToTarget)
+				{
+					position_ = targetPosition_;
+				}
+				else
+				{
+					position_ = position + travelled;
+				}
+			}
+			else
+			{
+				auto travelled = direction * velocityLength * deltaTimeMS;
+				position_ = position + travelled;
+			}
 		}
 	}
 
@@ -3029,10 +3135,10 @@ void NPC::tick(Microseconds elapsed, TimePoint now)
 
 bool NPC::playNode(int nodeId, NPCMoveType moveType, float moveSpeed, float radius, bool setAngle)
 {
-	return playNodeEx(nodeId, moveType, moveSpeed, radius, setAngle, false);
+	return playNodeEx(nodeId, moveType, moveSpeed, radius, setAngle, false, false);
 }
 
-bool NPC::playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed, float radius, bool setAngle, bool laneAware)
+bool NPC::playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed, float radius, bool setAngle, bool laneAware, bool smoothDriving)
 {
 	if (playback_)
 	{
@@ -3049,6 +3155,7 @@ bool NPC::playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed, float ra
 	nodeMoveRadius_ = radius;
 	nodeSetAngle_ = setAngle;
 	nodeLaneAware_ = laneAware;
+	nodeSmoothDriving_ = smoothDriving;
 
 	currentNode_ = npcComponent_->getNodeManager()->getNode(nodeId);
 	if (!currentNode_)
@@ -3100,6 +3207,7 @@ void NPC::stopPlayingNode()
 	nodeMoveRadius_ = 0.0f;
 	nodeSetAngle_ = true;
 	nodeLaneAware_ = false;
+	nodeSmoothDriving_ = false;
 	nodeLastPosition_ = Vector3(0.0f, 0.0f, 0.0f);
 
 	if (nodeId >= 0)
