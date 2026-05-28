@@ -289,6 +289,9 @@ Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
 	}
 
 	const NaviNode& naviNode = naviNodes_[naviNodeId];
+	position.x = static_cast<float>(naviNode.positionX) / 8.0f;
+	position.y = static_cast<float>(naviNode.positionY) / 8.0f;
+
 	Vector2 naviDirection(static_cast<float>(static_cast<int8_t>(naviNode.directionX)) / 100.0f, static_cast<float>(static_cast<int8_t>(naviNode.directionY)) / 100.0f);
 	float directionLength = glm::length(naviDirection);
 	if (directionLength <= 0.0001f)
@@ -332,8 +335,12 @@ Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
 
 	const Vector2 rightOfNavi(naviDirection.y, -naviDirection.x);
 	const float side = forward ? 1.0f : -1.0f;
-	float laneCenter = 0.0f;
+	float laneCenter = laneWidth * 0.5f;
 	if (leftLanes > 0 && rightLanes > 0)
+	{
+		laneCenter = (static_cast<float>(laneCount) - 0.5f) * laneWidth;
+	}
+	else if (laneCount > 1)
 	{
 		laneCenter = (static_cast<float>(laneCount) - 0.5f) * laneWidth;
 	}
