@@ -228,7 +228,7 @@ public:
 
 	bool playNode(int nodeId, NPCMoveType moveType, float moveSpeed = NPC_MOVE_SPEED_AUTO, float radius = 0.0f, bool setAngle = true) override;
 
-	bool playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed = NPC_MOVE_SPEED_AUTO, float radius = 0.0f, bool setAngle = true, bool laneAware = false, bool smoothDriving = false) override;
+	bool playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed = NPC_MOVE_SPEED_AUTO, float radius = 0.0f, bool setAngle = true, bool laneAware = false) override;
 
 	void stopPlayingNode() override;
 
@@ -461,7 +461,6 @@ private:
 	float stopRange_;
 	Vector3 targetPosition_;
 	Vector3 velocity_;
-	Vector3 targetVelocity_;
 	bool moving_;
 	bool needsVelocityUpdate_;
 
@@ -553,7 +552,6 @@ private:
 	float nodeMoveSpeed_;
 	float nodeMoveRadius_;
 	bool nodeSetAngle_;
-	bool nodeSmoothDriving_;
 	Vector3 nodeLastPosition_;
 
 	NPCComponent* npcComponent_;

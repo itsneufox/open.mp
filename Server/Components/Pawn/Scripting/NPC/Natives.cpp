@@ -1015,9 +1015,9 @@ SCRIPT_API(NPC_PlayNode, bool(INPC& npc, int nodeId, int moveType, float moveSpe
 	return npc.playNode(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle);
 }
 
-SCRIPT_API(NPC_PlayNodeEx, bool(INPC& npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle, bool laneAware, bool smoothDriving))
+SCRIPT_API(NPC_PlayNodeEx, bool(INPC& npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle, bool laneAware))
 {
-	return npc.playNodeEx(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle, laneAware, smoothDriving);
+	return npc.playNodeEx(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle, laneAware);
 }
 
 SCRIPT_API(NPC_StopPlayingNode, bool(INPC& npc))

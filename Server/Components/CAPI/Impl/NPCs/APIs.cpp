@@ -1030,10 +1030,10 @@ OMP_CAPI(NPC_PlayNode, bool(objectPtr npc, int nodeId, int moveType, float moveS
 	return npc_->playNode(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle);
 }
 
-OMP_CAPI(NPC_PlayNodeEx, bool(objectPtr npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle, bool laneAware, bool smoothDriving))
+OMP_CAPI(NPC_PlayNodeEx, bool(objectPtr npc, int nodeId, int moveType, float moveSpeed, float radius, bool setAngle, bool laneAware))
 {
 	POOL_ENTITY_RET(npcs, INPC, npc, npc_, false);
-	return npc_->playNodeEx(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle, laneAware, smoothDriving);
+	return npc_->playNodeEx(nodeId, static_cast<NPCMoveType>(moveType), moveSpeed, radius, setAngle, laneAware);
 }
 
 OMP_CAPI(NPC_StopPlayingNode, bool(objectPtr npc))
