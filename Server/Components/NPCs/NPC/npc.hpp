@@ -242,6 +242,8 @@ public:
 
 	uint16_t changeNode(int nodeId, uint16_t targetPointId) override;
 
+	bool canUseNodeLink(int nodeId, uint16_t pointId, uint16_t linkId, int targetNodeId, uint16_t targetPointId);
+
 	bool updateNodePoint(uint16_t pointId) override;
 
 	void setInvulnerable(bool toggle) override;

@@ -114,6 +114,12 @@ struct NPCEvents : public NPCEventHandler, public Singleton<NPCEvents<PRIORITY>>
 		ComponentManager::Get()->CallEvent<PRIORITY>("onNPCFinishNode", EventReturnHandler::None, &npc, nodeId);
 	}
 
+	bool onNPCSelectNodeLink(INPC& npc, int nodeId, uint16_t pointId, uint16_t linkId, int targetNodeId, uint16_t targetPointId, uint32_t targetFlags, uint8_t targetFloodFill) override
+	{
+		return ComponentManager::Get()->CallEvent<PRIORITY>("onNPCSelectNodeLink", EventReturnHandler::StopAtFalse, &npc,
+			nodeId, int(pointId), int(linkId), targetNodeId, int(targetPointId), int(targetFlags), int(targetFloodFill));
+	}
+
 	bool onNPCChangeNode(INPC& npc, int newNodeId, int oldNodeId) override
 	{
 		return ComponentManager::Get()->CallEvent<PRIORITY>("onNPCChangeNode", EventReturnHandler::StopAtFalse, &npc, newNodeId, oldNodeId);

@@ -193,6 +193,12 @@ struct NPCEvents : public NPCEventHandler, public Singleton<NPCEvents>
 		PawnManager::Get()->CallAllInEntryFirst("OnNPCFinishNode", DefaultReturnValue_True, npc.getID(), nodeId);
 	}
 
+	bool onNPCSelectNodeLink(INPC& npc, int nodeId, uint16_t pointId, uint16_t linkId, int targetNodeId, uint16_t targetPointId, uint32_t targetFlags, uint8_t targetFloodFill) override
+	{
+		cell ret = PawnManager::Get()->CallAllInEntryFirst("OnNPCSelectNodeLink", DefaultReturnValue_True, npc.getID(), nodeId, int(pointId), int(linkId), targetNodeId, int(targetPointId), cell(targetFlags), int(targetFloodFill));
+		return !!ret;
+	}
+
 	bool onNPCChangeNode(INPC& npc, int newNodeId, int oldNodeId) override
 	{
 		cell ret = PawnManager::Get()->CallAllInEntryFirst("OnNPCChangeNode", DefaultReturnValue_True, npc.getID(), newNodeId, oldNodeId);

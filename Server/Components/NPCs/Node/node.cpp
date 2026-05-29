@@ -219,7 +219,7 @@ bool NPCNode::isLaneAwareDriveLinkAllowed(uint16_t linkId, uint16_t fromPointId)
 	return getLinkLaneCount(linkId, fromPointId) > 0;
 }
 
-bool NPCNode::selectLink(uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId)
+bool NPCNode::selectLink(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId)
 {
 	if (!setPoint(pointId))
 	{
@@ -247,6 +247,11 @@ bool NPCNode::selectLink(uint16_t pointId, uint16_t lastPoint, bool laneAwareDri
 	{
 		const uint16_t linkId = startLink + i;
 		if (linkId >= linkNodes_.size())
+		{
+			continue;
+		}
+
+		if (npc && !npc->canUseNodeLink(nodeId_, pointId, linkId, linkNodes_[linkId].areaId, linkNodes_[linkId].nodeId))
 		{
 			continue;
 		}
@@ -311,7 +316,7 @@ uint16_t NPCNode::process(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool l
 	}
 
 	uint16_t linkId = 0;
-	if (!selectLink(pointId, lastPoint, laneAwareDrive, linkId))
+	if (!selectLink(npc, pointId, lastPoint, laneAwareDrive, linkId))
 	{
 		return 0xFFFE;
 	}

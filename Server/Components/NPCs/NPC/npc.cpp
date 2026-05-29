@@ -3062,7 +3062,7 @@ bool NPC::playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed, float ra
 
 	// Set link and point information
 	uint16_t startLink = 0;
-	currentNode_->selectLink(currentNode_->getPointId(), 0xFFFF, laneAware && moveType == NPCMoveType_Drive, startLink);
+	currentNode_->selectLink(this, currentNode_->getPointId(), 0xFFFF, laneAware && moveType == NPCMoveType_Drive, startLink);
 	currentNodePoint_ = currentNode_->getLinkPoint();
 	lastNodePoint_ = currentNode_->getPointId();
 	playingNode_ = true;
@@ -3140,6 +3140,28 @@ bool NPC::isPlayingNodePaused() const
 bool NPC::isPlayingNode() const
 {
 	return playingNode_;
+}
+
+bool NPC::canUseNodeLink(int nodeId, uint16_t pointId, uint16_t linkId, int targetNodeId, uint16_t targetPointId)
+{
+	uint32_t targetFlags = 0;
+	uint8_t targetFloodFill = 0;
+
+	NPCNode* targetNode = npcComponent_->getNodeManager()->getNode(targetNodeId);
+	if (targetNode)
+	{
+		NPCPathNodeData targetData;
+		if (targetNode->getPathNodeData(targetPointId, targetData))
+		{
+			targetFlags = targetData.flags;
+			targetFloodFill = targetData.floodFill;
+		}
+	}
+
+	return npcComponent_->getEventDispatcher_internal().stopAtFalse([this, nodeId, pointId, linkId, targetNodeId, targetPointId, targetFlags, targetFloodFill](NPCEventHandler* handler)
+		{
+			return handler->onNPCSelectNodeLink(*this, nodeId, pointId, linkId, targetNodeId, targetPointId, targetFlags, targetFloodFill);
+		});
 }
 
 uint16_t NPC::changeNode(int nodeId, uint16_t targetPointId)

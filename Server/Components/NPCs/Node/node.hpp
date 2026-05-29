@@ -70,7 +70,7 @@ public:
 	bool initialize(ICore* core);
 	uint16_t process(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& currentLinkId);
 	uint16_t processNodeChange(NPC* npc, uint16_t targetPointId);
-	bool selectLink(uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId);
+	bool selectLink(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId);
 
 	Vector3 getPosition();
 	Vector3 getLaneAwarePosition(uint16_t fromPointId) const;
