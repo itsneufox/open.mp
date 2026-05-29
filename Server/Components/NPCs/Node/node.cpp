@@ -170,7 +170,7 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 {
 	if (!initialized_ || fromPointId >= pathNodes_.size() || linkId >= linkNodes_.size() || linkId >= naviLinkNodes_.size())
 	{
-		return 0;
+		return -1;
 	}
 
 	const uint16_t naviLink = naviLinkNodes_[linkId];
@@ -178,13 +178,13 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	const uint16_t naviNodeId = static_cast<uint16_t>(naviLink & 0x03FF);
 	if (naviAreaId != nodeId_ || naviNodeId >= naviNodes_.size())
 	{
-		return 0;
+		return -1;
 	}
 
 	const LinkNode& linkNode = linkNodes_[linkId];
 	if (linkNode.areaId != nodeId_ || linkNode.nodeId >= pathNodes_.size())
 	{
-		return 0;
+		return -1;
 	}
 
 	const NaviNode& naviNode = naviNodes_[naviNodeId];
@@ -192,7 +192,7 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	float directionLength = glm::length(naviDirection);
 	if (directionLength <= 0.0001f)
 	{
-		return 0;
+		return -1;
 	}
 	naviDirection /= directionLength;
 
@@ -204,7 +204,7 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	float segmentLength = glm::length(segmentDirection);
 	if (segmentLength <= 0.0001f)
 	{
-		return 0;
+		return -1;
 	}
 	segmentDirection /= segmentLength;
 
@@ -257,7 +257,9 @@ bool NPCNode::selectLink(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool la
 		}
 
 		const bool backtracks = linkNodes_[linkId].nodeId == lastPoint && linkCount > 1;
-		const bool laneAllowed = !laneAwareDrive || isLaneAwareDriveLinkAllowed(linkId, pointId);
+		const int laneCount = laneAwareDrive ? getLinkLaneCount(linkId, pointId) : -1;
+		const bool laneAllowed = !laneAwareDrive || laneCount > 0;
+		const bool laneUnknown = laneAwareDrive && laneCount < 0;
 		if (laneAllowed)
 		{
 			if (backtracks)
@@ -268,6 +270,11 @@ bool NPCNode::selectLink(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool la
 			{
 				laneCandidates[laneCandidateCount++] = linkId;
 			}
+			continue;
+		}
+
+		if (!laneUnknown)
+		{
 			continue;
 		}
 
