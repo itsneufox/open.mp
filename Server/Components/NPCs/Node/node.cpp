@@ -211,7 +211,7 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	const uint32_t naviFlags = naviNode.flags;
 	const int leftLanes = static_cast<int>((naviFlags >> 8) & 0x7);
 	const int rightLanes = static_cast<int>((naviFlags >> 11) & 0x7);
-	return glm::dot(segmentDirection, naviDirection) >= 0.0f ? rightLanes : leftLanes;
+	return glm::dot(segmentDirection, naviDirection) >= 0.0f ? leftLanes : rightLanes;
 }
 
 bool NPCNode::isLaneAwareDriveLinkAllowed(uint16_t linkId, uint16_t fromPointId) const
@@ -431,7 +431,7 @@ Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
 	const uint32_t naviFlags = naviNode.flags;
 	const int leftLanes = static_cast<int>((naviFlags >> 8) & 0x7);
 	const int rightLanes = static_cast<int>((naviFlags >> 11) & 0x7);
-	const int laneCount = forward ? rightLanes : leftLanes;
+	const int laneCount = forward ? leftLanes : rightLanes;
 	if (laneCount <= 0)
 	{
 		return position;
@@ -450,7 +450,7 @@ Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
 	}
 
 	const Vector2 rightOfNavi(naviDirection.y, -naviDirection.x);
-	const float side = forward ? 1.0f : -1.0f;
+	const float side = forward ? -1.0f : 1.0f;
 	float laneCenter = laneWidth * 0.5f;
 	if (leftLanes > 0 && rightLanes > 0)
 	{
