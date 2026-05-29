@@ -17,6 +17,34 @@
 #include "../Node/node.hpp"
 #include <Server/Components/Vehicles/vehicle_seats.hpp>
 
+namespace
+{
+float angleDifference(float target, float current)
+{
+	return fmodf(target - current + 540.0f, 360.0f) - 180.0f;
+}
+
+float approachAngle(float current, float target, float maxStep)
+{
+	const float difference = angleDifference(target, current);
+	if (fabsf(difference) <= maxStep)
+	{
+		return target;
+	}
+
+	float angle = current + (difference > 0.0f ? maxStep : -maxStep);
+	if (angle >= 360.0f)
+	{
+		angle -= 360.0f;
+	}
+	else if (angle < 0.0f)
+	{
+		angle += 360.0f;
+	}
+	return angle;
+}
+}
+
 NPC::NPC(NPCComponent* component, IPlayer* playerPtr)
 	: footSyncSkipUpdate_(0)
 	, driverSyncSkipUpdate_(0)
@@ -499,9 +527,12 @@ bool NPC::move(Vector3 pos, NPCMoveType moveType, float moveSpeed, float stopRan
 	if (distance > FLT_EPSILON)
 	{
 		front = (pos - position) / distance;
-		auto rotation = getRotation().ToEuler();
-		rotation.z = getAngleOfLine(front.x, front.y);
-		rotation_ = GTAQuat(rotation); // Do this directly, if you use NPC::setRotation it's going to cause recursion
+		if (!playingNode_ || moveType != NPCMoveType_Drive)
+		{
+			auto rotation = getRotation().ToEuler();
+			rotation.z = getAngleOfLine(front.x, front.y);
+			rotation_ = GTAQuat(rotation); // Do this directly, if you use NPC::setRotation it's going to cause recursion
+		}
 
 		// Calculate velocity to use on tick
 		velocity_ = front * (moveSpeed_ / 100.0f);
@@ -2589,6 +2620,14 @@ void NPC::advance(TimePoint now)
 		if (distanceToTarget > FLT_EPSILON)
 		{
 			auto direction = toTarget / distanceToTarget;
+			if (playingNode_ && moveType_ == NPCMoveType_Drive && nodeSetAngle_)
+			{
+				auto rotation = rotation_.ToEuler();
+				const float targetAngle = getAngleOfLine(direction.x, direction.y);
+				rotation.z = approachAngle(rotation.z, targetAngle, 120.0f * deltaTimeSEC);
+				rotation_ = GTAQuat(rotation);
+			}
+
 			auto travelled = direction * velocityLength * deltaTimeMS;
 			position_ = position + travelled;
 		}
