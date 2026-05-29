@@ -437,29 +437,10 @@ Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
 		return position;
 	}
 
-	const int totalLanes = leftLanes + rightLanes;
 	const int widthValue = static_cast<int>(naviFlags & 0xFF);
-	float laneWidth = 3.5f;
-	if (widthValue > 0 && totalLanes > 0)
-	{
-		const float widthLane = (static_cast<float>(widthValue) / 8.0f) / static_cast<float>(totalLanes);
-		if (widthLane >= 2.5f && widthLane <= 4.5f)
-		{
-			laneWidth = widthLane;
-		}
-	}
-
 	const Vector2 rightOfNavi(naviDirection.y, -naviDirection.x);
 	const float side = forward ? 1.0f : -1.0f;
-	float laneCenter = laneWidth * 0.5f;
-	if (leftLanes > 0 && rightLanes > 0)
-	{
-		laneCenter = (static_cast<float>(laneCount) - 0.5f) * laneWidth;
-	}
-	else if (laneCount > 1)
-	{
-		laneCenter = (static_cast<float>(laneCount) - 0.5f) * laneWidth;
-	}
+	const float laneCenter = 2.7f + static_cast<float>(widthValue) / 16.0f;
 
 	const Vector2 laneOffset = rightOfNavi * side * laneCenter;
 	position.x += laneOffset.x;
