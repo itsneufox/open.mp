@@ -68,8 +68,9 @@ public:
 	~NPCNode();
 
 	bool initialize(ICore* core);
-	uint16_t process(NPC* npc, uint16_t pointId, uint16_t lastPoint, uint16_t& currentLinkId);
+	uint16_t process(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& currentLinkId);
 	uint16_t processNodeChange(NPC* npc, uint16_t targetPointId);
+	bool selectLink(uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId);
 
 	Vector3 getPosition();
 	Vector3 getLaneAwarePosition(uint16_t fromPointId) const;
@@ -96,6 +97,9 @@ public:
 	uint16_t getLastLinkTargetPointId() const;
 
 private:
+	int getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const;
+	bool isLaneAwareDriveLinkAllowed(uint16_t linkId, uint16_t fromPointId) const;
+
 	int nodeId_;
 	bool initialized_;
 

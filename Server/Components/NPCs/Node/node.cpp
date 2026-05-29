@@ -166,80 +166,184 @@ bool NPCNode::initialize(ICore* core)
 	return true;
 }
 
-uint16_t NPCNode::process(NPC* npc, uint16_t pointId, uint16_t lastPoint, uint16_t& currentLinkId)
+int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 {
-	if (!initialized_)
+	if (!initialized_ || fromPointId >= pathNodes_.size() || linkId >= linkNodes_.size() || linkId >= naviLinkNodes_.size())
 	{
 		return 0;
 	}
 
-	bool linkRead = false;
-
-	setPoint(pointId);
-
-	uint16_t startLink = getLinkId();
-	uint16_t linkCount = getLinkCount();
-	uint8_t attempts = 0;
-	uint16_t linkId = startLink;
-
-	while (true)
+	const uint16_t naviLink = naviLinkNodes_[linkId];
+	const uint16_t naviAreaId = static_cast<uint16_t>((naviLink >> 10) & 0x3F);
+	const uint16_t naviNodeId = static_cast<uint16_t>(naviLink & 0x03FF);
+	if (naviAreaId != nodeId_ || naviNodeId >= naviNodes_.size())
 	{
-		do
-		{
-			attempts++;
-			if (attempts > 10)
-			{
-				return 0;
-			}
+		return 0;
+	}
 
-			if (linkCount > 0)
-			{
-				linkId = startLink + (rand() % linkCount);
-			}
-			else
-			{
-				linkId = startLink;
-			}
+	const LinkNode& linkNode = linkNodes_[linkId];
+	if (linkNode.areaId != nodeId_ || linkNode.nodeId >= pathNodes_.size())
+	{
+		return 0;
+	}
 
-			linkRead = setLink(linkId);
-		} while (!linkRead || (linkId < linkNodes_.size() && linkNodes_[linkId].nodeId == lastPoint && linkCount > 1));
+	const NaviNode& naviNode = naviNodes_[naviNodeId];
+	Vector2 naviDirection(static_cast<float>(static_cast<int8_t>(naviNode.directionX)) / 100.0f, static_cast<float>(static_cast<int8_t>(naviNode.directionY)) / 100.0f);
+	float directionLength = glm::length(naviDirection);
+	if (directionLength <= 0.0001f)
+	{
+		return 0;
+	}
+	naviDirection /= directionLength;
 
+	const PathNode& fromNode = pathNodes_[fromPointId];
+	const PathNode& targetNode = pathNodes_[linkNode.nodeId];
+	Vector2 segmentDirection(
+		static_cast<float>(targetNode.positionX - fromNode.positionX),
+		static_cast<float>(targetNode.positionY - fromNode.positionY));
+	float segmentLength = glm::length(segmentDirection);
+	if (segmentLength <= 0.0001f)
+	{
+		return 0;
+	}
+	segmentDirection /= segmentLength;
+
+	const uint32_t naviFlags = naviNode.flags;
+	const int leftLanes = static_cast<int>((naviFlags >> 8) & 0x7);
+	const int rightLanes = static_cast<int>((naviFlags >> 11) & 0x7);
+	return glm::dot(segmentDirection, naviDirection) >= 0.0f ? rightLanes : leftLanes;
+}
+
+bool NPCNode::isLaneAwareDriveLinkAllowed(uint16_t linkId, uint16_t fromPointId) const
+{
+	return getLinkLaneCount(linkId, fromPointId) > 0;
+}
+
+bool NPCNode::selectLink(uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId)
+{
+	if (!setPoint(pointId))
+	{
+		return false;
+	}
+
+	const uint16_t startLink = getLinkId();
+	const uint16_t linkCount = getLinkCount();
+	if (startLink >= linkNodes_.size())
+	{
+		return false;
+	}
+
+	uint16_t laneCandidates[16];
+	uint8_t laneCandidateCount = 0;
+	uint16_t laneBacktrackCandidates[16];
+	uint8_t laneBacktrackCount = 0;
+	uint16_t fallbackCandidates[16];
+	uint8_t fallbackCount = 0;
+	uint16_t fallbackBacktrackCandidates[16];
+	uint8_t fallbackBacktrackCount = 0;
+	const uint16_t effectiveLinkCount = linkCount > 0 ? linkCount : 1;
+
+	for (uint16_t i = 0; i < effectiveLinkCount && i < 16; i++)
+	{
+		const uint16_t linkId = startLink + i;
 		if (linkId >= linkNodes_.size())
 		{
-			return 0;
+			continue;
 		}
 
-		const LinkNode& currentLink = linkNodes_[linkId];
-		currentLinkId = linkId;
-
-		if (currentLink.areaId != nodeId_)
+		const bool backtracks = linkNodes_[linkId].nodeId == lastPoint && linkCount > 1;
+		const bool laneAllowed = !laneAwareDrive || isLaneAwareDriveLinkAllowed(linkId, pointId);
+		if (laneAllowed)
 		{
-			if (currentLink.areaId != 65535)
+			if (backtracks)
 			{
-				currentLinkId_ = linkId;
-				return 0xFFFF;
+				laneBacktrackCandidates[laneBacktrackCount++] = linkId;
 			}
 			else
 			{
-				return 0;
+				laneCandidates[laneCandidateCount++] = linkId;
 			}
+			continue;
+		}
+
+		if (backtracks)
+		{
+			fallbackBacktrackCandidates[fallbackBacktrackCount++] = linkId;
 		}
 		else
 		{
-			currentLinkId_ = linkId;
-			npc->updateNodePoint(currentLink.nodeId);
-			return currentLink.nodeId;
+			fallbackCandidates[fallbackCount++] = linkId;
 		}
 	}
 
-	return 0;
+	if (laneCandidateCount > 0)
+	{
+		selectedLinkId = laneCandidates[rand() % laneCandidateCount];
+		return setLink(selectedLinkId);
+	}
+
+	if (laneBacktrackCount > 0)
+	{
+		selectedLinkId = laneBacktrackCandidates[rand() % laneBacktrackCount];
+		return setLink(selectedLinkId);
+	}
+
+	if (fallbackCount > 0)
+	{
+		selectedLinkId = fallbackCandidates[rand() % fallbackCount];
+		return setLink(selectedLinkId);
+	}
+
+	if (fallbackBacktrackCount > 0)
+	{
+		selectedLinkId = fallbackBacktrackCandidates[rand() % fallbackBacktrackCount];
+		return setLink(selectedLinkId);
+	}
+
+	return false;
+}
+
+uint16_t NPCNode::process(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& currentLinkId)
+{
+	if (!initialized_)
+	{
+		return 0xFFFE;
+	}
+
+	uint16_t linkId = 0;
+	if (!selectLink(pointId, lastPoint, laneAwareDrive, linkId))
+	{
+		return 0xFFFE;
+	}
+
+	const LinkNode& currentLink = linkNodes_[linkId];
+	currentLinkId = linkId;
+
+	if (currentLink.areaId != nodeId_)
+	{
+		if (currentLink.areaId != 65535)
+		{
+			currentLinkId_ = linkId;
+			return 0xFFFF;
+		}
+		else
+		{
+			return 0xFFFE;
+		}
+	}
+	else
+	{
+		currentLinkId_ = linkId;
+		npc->updateNodePoint(currentLink.nodeId);
+		return currentLink.nodeId;
+	}
 }
 
 uint16_t NPCNode::processNodeChange(NPC* npc, uint16_t targetPointId)
 {
 	if (!initialized_ || targetPointId >= pathNodes_.size())
 	{
-		return 0;
+		return 0xFFFE;
 	}
 
 	currentPointId_ = targetPointId;

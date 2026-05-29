@@ -2533,7 +2533,7 @@ void NPC::advance(TimePoint now)
 				npcComponent_->getEventDispatcher_internal().dispatch(&NPCEventHandler::onNPCFinishNodePoint, *this, currentNode_->getNodeId(), currentNodePoint_);
 
 				uint16_t currentLinkId;
-				uint16_t newPoint = currentNode_->process(this, currentNodePoint_, lastNodePoint_, currentLinkId);
+				uint16_t newPoint = currentNode_->process(this, currentNodePoint_, lastNodePoint_, nodeLaneAware_ && nodeMoveType_ == NPCMoveType_Drive, currentLinkId);
 
 				if (newPoint == 0xFFFF)
 				{
@@ -2543,7 +2543,7 @@ void NPC::advance(TimePoint now)
 					if (npcComponent_->getNodeManager()->isNodeOpen(targetNodeId))
 					{
 						uint16_t changedPoint = changeNode(targetNodeId, targetPointId);
-						if (changedPoint > 0)
+						if (changedPoint != 0xFFFE)
 						{
 							lastNodePoint_ = currentNodePoint_;
 							currentNodePoint_ = changedPoint;
@@ -2562,7 +2562,7 @@ void NPC::advance(TimePoint now)
 						stopPlayingNode();
 					}
 				}
-				else if (newPoint > 0)
+				else if (newPoint != 0xFFFE)
 				{
 					lastNodePoint_ = currentNodePoint_;
 					currentNodePoint_ = newPoint;
@@ -3061,7 +3061,8 @@ bool NPC::playNodeEx(int nodeId, NPCMoveType moveType, float moveSpeed, float ra
 	setPositionHandled(nodePosition, true);
 
 	// Set link and point information
-	currentNode_->setLink(currentNode_->getLinkId());
+	uint16_t startLink = 0;
+	currentNode_->selectLink(currentNode_->getPointId(), 0xFFFF, laneAware && moveType == NPCMoveType_Drive, startLink);
 	currentNodePoint_ = currentNode_->getLinkPoint();
 	lastNodePoint_ = currentNode_->getPointId();
 	playingNode_ = true;
@@ -3145,7 +3146,7 @@ uint16_t NPC::changeNode(int nodeId, uint16_t targetPointId)
 {
 	if (!playingNode_)
 	{
-		return 0;
+		return 0xFFFE;
 	}
 
 	int oldNodeId = currentNode_ ? currentNode_->getNodeId() : -1;
@@ -3162,14 +3163,14 @@ uint16_t NPC::changeNode(int nodeId, uint16_t targetPointId)
 
 	if (!shouldChangeNode)
 	{
-		return 0;
+		return 0xFFFE;
 	}
 
 	// Get the new node instance
 	currentNode_ = npcComponent_->getNodeManager()->getNode(nodeId);
 	if (!currentNode_)
 	{
-		return 0;
+		return 0xFFFE;
 	}
 
 	// Process the node change with the provided target point ID
