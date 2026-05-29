@@ -166,7 +166,17 @@ bool NPCNode::initialize(ICore* core)
 	return true;
 }
 
-int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
+const NPCNode* NPCNode::resolveNode(NPC* npc, uint16_t areaId) const
+{
+	if (areaId == nodeId_)
+	{
+		return this;
+	}
+
+	return npc ? npc->getNode(areaId) : nullptr;
+}
+
+int NPCNode::getLinkLaneCount(NPC* npc, uint16_t linkId, uint16_t fromPointId) const
 {
 	if (!initialized_ || fromPointId >= pathNodes_.size() || linkId >= linkNodes_.size() || linkId >= naviLinkNodes_.size())
 	{
@@ -176,19 +186,32 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	const uint16_t naviLink = naviLinkNodes_[linkId];
 	const uint16_t naviAreaId = static_cast<uint16_t>((naviLink >> 10) & 0x3F);
 	const uint16_t naviNodeId = static_cast<uint16_t>(naviLink & 0x03FF);
-	if (naviAreaId != nodeId_ || naviNodeId >= naviNodes_.size())
+	const NPCNode* naviNodeArea = resolveNode(npc, naviAreaId);
+	if (!naviNodeArea)
 	{
 		return -1;
 	}
 
 	const LinkNode& linkNode = linkNodes_[linkId];
-	if (linkNode.areaId != nodeId_ || linkNode.nodeId >= pathNodes_.size())
+	const NPCNode* targetNodeArea = resolveNode(npc, linkNode.areaId);
+	if (!targetNodeArea)
 	{
 		return -1;
 	}
 
-	const NaviNode& naviNode = naviNodes_[naviNodeId];
-	Vector2 naviDirection(static_cast<float>(static_cast<int8_t>(naviNode.directionX)) / 100.0f, static_cast<float>(static_cast<int8_t>(naviNode.directionY)) / 100.0f);
+	NPCNaviNodeData naviNode;
+	if (!naviNodeArea->getNaviNodeData(naviNodeId, naviNode))
+	{
+		return -1;
+	}
+
+	NPCPathNodeData targetNode;
+	if (!targetNodeArea->getPathNodeData(linkNode.nodeId, targetNode))
+	{
+		return -1;
+	}
+
+	Vector2 naviDirection(static_cast<float>(naviNode.directionX) / 100.0f, static_cast<float>(naviNode.directionY) / 100.0f);
 	float directionLength = glm::length(naviDirection);
 	if (directionLength <= 0.0001f)
 	{
@@ -197,10 +220,9 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	naviDirection /= directionLength;
 
 	const PathNode& fromNode = pathNodes_[fromPointId];
-	const PathNode& targetNode = pathNodes_[linkNode.nodeId];
 	Vector2 segmentDirection(
-		static_cast<float>(targetNode.positionX - fromNode.positionX),
-		static_cast<float>(targetNode.positionY - fromNode.positionY));
+		targetNode.position.x - static_cast<float>(fromNode.positionX) / 8.0f,
+		targetNode.position.y - static_cast<float>(fromNode.positionY) / 8.0f);
 	float segmentLength = glm::length(segmentDirection);
 	if (segmentLength <= 0.0001f)
 	{
@@ -214,9 +236,9 @@ int NPCNode::getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const
 	return glm::dot(segmentDirection, naviDirection) >= 0.0f ? leftLanes : rightLanes;
 }
 
-bool NPCNode::isLaneAwareDriveLinkAllowed(uint16_t linkId, uint16_t fromPointId) const
+bool NPCNode::isLaneAwareDriveLinkAllowed(NPC* npc, uint16_t linkId, uint16_t fromPointId) const
 {
-	return getLinkLaneCount(linkId, fromPointId) > 0;
+	return getLinkLaneCount(npc, linkId, fromPointId) > 0;
 }
 
 bool NPCNode::selectLink(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool laneAwareDrive, uint16_t& selectedLinkId)
@@ -257,7 +279,7 @@ bool NPCNode::selectLink(NPC* npc, uint16_t pointId, uint16_t lastPoint, bool la
 		}
 
 		const bool backtracks = linkNodes_[linkId].nodeId == lastPoint && linkCount > 1;
-		const int laneCount = laneAwareDrive ? getLinkLaneCount(linkId, pointId) : -1;
+		const int laneCount = laneAwareDrive ? getLinkLaneCount(npc, linkId, pointId) : -1;
 		const bool laneAllowed = !laneAwareDrive || laneCount > 0;
 		const bool laneUnknown = laneAwareDrive && laneCount < 0;
 		if (laneAllowed)

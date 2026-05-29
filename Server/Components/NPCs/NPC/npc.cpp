@@ -3203,6 +3203,11 @@ bool NPC::canUseNodeLink(int nodeId, uint16_t pointId, uint16_t linkId, int targ
 		});
 }
 
+NPCNode* NPC::getNode(int nodeId) const
+{
+	return npcComponent_->getNodeManager()->getNode(nodeId);
+}
+
 uint16_t NPC::changeNode(int nodeId, uint16_t targetPointId)
 {
 	if (!playingNode_)

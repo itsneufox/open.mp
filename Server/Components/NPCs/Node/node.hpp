@@ -97,8 +97,9 @@ public:
 	uint16_t getLastLinkTargetPointId() const;
 
 private:
-	int getLinkLaneCount(uint16_t linkId, uint16_t fromPointId) const;
-	bool isLaneAwareDriveLinkAllowed(uint16_t linkId, uint16_t fromPointId) const;
+	const NPCNode* resolveNode(NPC* npc, uint16_t areaId) const;
+	int getLinkLaneCount(NPC* npc, uint16_t linkId, uint16_t fromPointId) const;
+	bool isLaneAwareDriveLinkAllowed(NPC* npc, uint16_t linkId, uint16_t fromPointId) const;
 
 	int nodeId_;
 	bool initialized_;
