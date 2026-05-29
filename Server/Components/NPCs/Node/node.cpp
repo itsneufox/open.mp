@@ -460,6 +460,11 @@ Vector3 NPCNode::getLaneAwarePosition(uint16_t fromPointId) const
 	}
 
 	const int widthValue = static_cast<int>(naviFlags & 0xFF);
+	if (widthValue == 0 && laneCount == 1 && (leftLanes == 0 || rightLanes == 0))
+	{
+		return position;
+	}
+
 	const Vector2 rightOfNavi(naviDirection.y, -naviDirection.x);
 	const float side = forward ? 1.0f : -1.0f;
 	const float laneCenter = 2.7f + static_cast<float>(widthValue) / 16.0f;
