@@ -261,11 +261,34 @@ bool Vehicle::updateFromDriverSync(const VehicleDriverSyncPacket& vehicleSync, I
 
 bool Vehicle::updateFromUnoccupied(const VehicleUnoccupiedSyncPacket& unoccupiedSync, IPlayer& player)
 {
-	if (respawning || (isTrailer() && cab->getDriver() != &player))
+	bool chainedTrailerSync = false;
+	if (respawning)
 	{
 		return false;
 	}
-	else if (!unoccupiedSync.SeatID)
+
+	if (isTrailer())
+	{
+		// A trailer deeper in a chain is owned by the driver at the root, while
+		// its immediate cab is itself unoccupied. Walk the towing chain so that
+		// legitimate unoccupied sync from that root driver remains authoritative.
+		Vehicle* towingVehicle = cab;
+		for (std::size_t depth = 0; towingVehicle && depth < 32; ++depth)
+		{
+			if (towingVehicle->getDriver() == &player)
+			{
+				chainedTrailerSync = true;
+				break;
+			}
+			towingVehicle = towingVehicle->cab;
+		}
+		if (!chainedTrailerSync)
+		{
+			return false;
+		}
+	}
+
+	if (!unoccupiedSync.SeatID && !chainedTrailerSync)
 	{
 		const Vector3 playerDist3D = player.getPosition() - pos;
 		const float dist = glm::dot(playerDist3D, playerDist3D);
@@ -290,7 +313,7 @@ bool Vehicle::updateFromUnoccupied(const VehicleUnoccupiedSyncPacket& unoccupied
 			return handler->onUnoccupiedVehicleUpdate(*this, player, data);
 		});
 
-	if (cab)
+	if (cab && !chainedTrailerSync)
 	{
 		cab->detachTrailer();
 		cab = nullptr;
