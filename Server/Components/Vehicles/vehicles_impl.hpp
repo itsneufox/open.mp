@@ -705,8 +705,19 @@ public:
 					continue;
 				}
 
-				const Vector2 dist2D = vehicle->getPosition() - player.getPosition();
-				const bool shouldBeStreamedIn = state != PlayerState_None && player.getVirtualWorld() == vehicle->getVirtualWorld() && (playerVehicle == vehicle || glm::dot(dist2D, dist2D) < maxDist);
+				bool towingChainInRange = false;
+				bool attachedToPlayerVehicle = false;
+				Vehicle* towingVehicle = vehicle;
+				for (std::size_t depth = 0; towingVehicle && depth < 32; ++depth)
+				{
+					const Vector2 dist2D = towingVehicle->getPosition() - player.getPosition();
+					towingChainInRange |= glm::dot(dist2D, dist2D) < maxDist;
+					attachedToPlayerVehicle |= playerVehicle == towingVehicle;
+					towingVehicle = static_cast<Vehicle*>(towingVehicle->getCab());
+				}
+				const bool shouldBeStreamedIn = state != PlayerState_None
+					&& player.getVirtualWorld() == vehicle->getVirtualWorld()
+					&& (attachedToPlayerVehicle || towingChainInRange);
 
 				const bool isStreamedIn = vehicle->isStreamedInForPlayer(player);
 				if (!isStreamedIn && shouldBeStreamedIn)
