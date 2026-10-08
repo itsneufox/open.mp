@@ -8,6 +8,7 @@
 
 #include "npc.hpp"
 #include <netcode.hpp>
+#include <algorithm>
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "../npcs_impl.hpp"
@@ -2425,6 +2426,105 @@ void NPC::advance(TimePoint now)
 	float velocityLength = glm::length(velocity_);
 	auto maxTravel = velocityLength * deltaTimeMS;
 
+	auto advanceNodePoint = [this]() -> bool
+	{
+		if (!playingNode_ || nodePlayingPaused_ || !currentNode_)
+		{
+			return false;
+		}
+
+		npcComponent_->getEventDispatcher_internal().dispatch(&NPCEventHandler::onNPCFinishNodePoint, *this, currentNode_->getNodeId(), currentNodePoint_);
+		if (!playingNode_ || nodePlayingPaused_ || !currentNode_)
+		{
+			return false;
+		}
+
+		uint16_t currentLinkId;
+		uint16_t newPoint = currentNode_->process(this, currentNodePoint_, lastNodePoint_, currentLinkId);
+		if (newPoint == 0xFFFF)
+		{
+			int targetNodeId = currentNode_->getLastLinkTargetNodeId();
+			uint16_t targetPointId = currentNode_->getLastLinkTargetPointId();
+			if (!npcComponent_->getNodeManager()->isNodeOpen(targetNodeId))
+			{
+				stopPlayingNode();
+				return false;
+			}
+
+			uint16_t changedPoint = changeNode(targetNodeId, targetPointId);
+			if (changedPoint == 0)
+			{
+				stopPlayingNode();
+				return false;
+			}
+
+			lastNodePoint_ = currentNodePoint_;
+			currentNodePoint_ = changedPoint;
+		}
+		else if (newPoint > 0)
+		{
+			lastNodePoint_ = currentNodePoint_;
+			currentNodePoint_ = newPoint;
+		}
+		else
+		{
+			stopPlayingNode();
+			return false;
+		}
+
+		return move(currentNode_->getPosition(), nodeMoveType_, nodeMoveSpeed_, nodeMoveRadius_);
+	};
+
+	// Carry unused tick time across node boundaries so short node segments do not
+	// create a stationary update each time the next point is reached.
+	if (playingNode_ && !nodePlayingPaused_ && currentNode_ && !movingByPath_ && !followingPlayer_ && !vehicleToEnter_)
+	{
+		float remainingTimeMS = deltaTimeMS;
+		uint16_t nodeTransitions = 0;
+		constexpr uint16_t maxNodeTransitionsPerTick = 256;
+
+		while (moving_ && playingNode_ && !nodePlayingPaused_ && currentNode_ && remainingTimeMS > 0.0f && nodeTransitions < maxNodeTransitionsPerTick)
+		{
+			position = getPosition();
+			toTarget = targetPosition_ - position;
+			distanceToTarget = glm::length(toTarget);
+			velocityLength = glm::length(velocity_);
+
+			const float arrivalRadius = std::max(0.0f, stopRange_);
+			const float distanceToArrival = std::max(0.0f, distanceToTarget - arrivalRadius);
+			if (distanceToTarget <= arrivalRadius || (velocityLength > FLT_EPSILON && distanceToArrival <= velocityLength * remainingTimeMS))
+			{
+				if (distanceToArrival > FLT_EPSILON && velocityLength > FLT_EPSILON)
+				{
+					const auto direction = toTarget / distanceToTarget;
+					position_ = position + direction * distanceToArrival;
+					remainingTimeMS = std::max(0.0f, remainingTimeMS - distanceToArrival / velocityLength);
+				}
+
+				stopMove();
+				setPositionHandled(position_, false);
+				++nodeTransitions;
+				if (!advanceNodePoint())
+				{
+					break;
+				}
+				continue;
+			}
+
+			if (velocityLength <= FLT_EPSILON)
+			{
+				break;
+			}
+
+			const auto direction = toTarget / distanceToTarget;
+			position_ = position + direction * (velocityLength * remainingTimeMS);
+			remainingTimeMS = 0.0f;
+		}
+
+		lastMove_ = now;
+		return;
+	}
+
 	if (distanceToTarget <= stopRange_ || maxTravel >= distanceToTarget)
 	{
 		// Reached or about to overshoot target
@@ -2528,53 +2628,7 @@ void NPC::advance(TimePoint now)
 			}
 			else if (playingNode_ && !nodePlayingPaused_ && currentNode_)
 			{
-				// Process node movement
-				npcComponent_->getEventDispatcher_internal().dispatch(&NPCEventHandler::onNPCFinishNodePoint, *this, currentNode_->getNodeId(), currentNodePoint_);
-
-				uint16_t currentLinkId;
-				uint16_t newPoint = currentNode_->process(this, currentNodePoint_, lastNodePoint_, currentLinkId);
-
-				if (newPoint == 0xFFFF)
-				{
-					// Need to change node - get target info from last processed link
-					int targetNodeId = currentNode_->getLastLinkTargetNodeId();
-					uint16_t targetPointId = currentNode_->getLastLinkTargetPointId();
-					if (npcComponent_->getNodeManager()->isNodeOpen(targetNodeId))
-					{
-						uint16_t changedPoint = changeNode(targetNodeId, targetPointId);
-						if (changedPoint > 0)
-						{
-							lastNodePoint_ = currentNodePoint_;
-							currentNodePoint_ = changedPoint;
-
-							// Update position and move to new point
-							Vector3 newPosition = currentNode_->getPosition();
-							move(newPosition, nodeMoveType_, nodeMoveSpeed_, nodeMoveRadius_);
-						}
-						else
-						{
-							stopPlayingNode();
-						}
-					}
-					else
-					{
-						stopPlayingNode();
-					}
-				}
-				else if (newPoint > 0)
-				{
-					lastNodePoint_ = currentNodePoint_;
-					currentNodePoint_ = newPoint;
-
-					// Update position and move to new point
-					Vector3 newPosition = currentNode_->getPosition();
-					move(newPosition, nodeMoveType_, nodeMoveSpeed_, nodeMoveRadius_);
-				}
-				else
-				{
-					// Node processing failed or reached end
-					stopPlayingNode();
-				}
+				advanceNodePoint();
 			}
 			else
 			{
@@ -2683,12 +2737,21 @@ void NPC::tick(Microseconds elapsed, TimePoint now)
 	if (player_ && !markedForKick_)
 	{
 		auto state = player_->getState();
+		const bool canMove = state == PlayerState_OnFoot || state == PlayerState_Driver || state == PlayerState_Passenger || state == PlayerState_Spawned;
+		const bool fastNodeVehicleMove = state == PlayerState_Driver && vehicle_ && vehicleSeat_ == 0 && moving_ && playingNode_ && !nodePlayingPaused_;
+
+		// Keep node-driven vehicle movement aligned with server ticks instead of the slower
+		// general NPC update rate, which can make vehicle sync position steps visible.
+		if (fastNodeVehicleMove)
+		{
+			advance(now);
+		}
 
 		// Only process if it's needed based on update rate
 		if (duration_cast<Milliseconds>(now - lastUpdate_).count() > npcComponent_->getGeneralNPCUpdateRate())
 		{
 			// Only process the NPC if it is spawned
-			if (state == PlayerState_OnFoot || state == PlayerState_Driver || state == PlayerState_Passenger || state == PlayerState_Spawned)
+			if (canMove)
 			{
 				if (playback_ && playback_->isValid())
 				{
@@ -2754,7 +2817,7 @@ void NPC::tick(Microseconds elapsed, TimePoint now)
 						}
 					}
 
-					if (moving_)
+					if (moving_ && !fastNodeVehicleMove)
 					{
 						advance(now);
 					}
