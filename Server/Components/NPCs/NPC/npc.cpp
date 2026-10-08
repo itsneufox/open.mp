@@ -2246,9 +2246,16 @@ void NPC::sendDriverSync()
 	getKeys(upAndDown, leftAndRight, keys);
 
 	uint16_t vehicleID = vehicle_->getID();
+	Vector3 syncVelocity = velocity_;
+	if (moving_ && moveType_ == NPCMoveType_Drive)
+	{
+		// advance() stores movement speed in units per millisecond. Driver sync uses
+		// GTA's movement speed units per 20 ms physics step (50 steps per second).
+		syncVelocity *= 20.0f;
+	}
 
 	// Check if immediate update is needed (basic comparison for now)
-	bool needsImmediateUpdate = driverSync_.LeftRight != leftAndRight || driverSync_.UpDown != upAndDown || driverSync_.Keys != keys || driverSync_.Position != position_ || driverSync_.Rotation.q != rotation_.q || driverSync_.PlayerHealthArmour.x != health_ || driverSync_.PlayerHealthArmour.y != armour_ || driverSync_.VehicleID != vehicleID || driverSync_.Velocity != velocity_ || driverSync_.Health != vehicleHealth_;
+	bool needsImmediateUpdate = driverSync_.LeftRight != leftAndRight || driverSync_.UpDown != upAndDown || driverSync_.Keys != keys || driverSync_.Position != position_ || driverSync_.Rotation.q != rotation_.q || driverSync_.PlayerHealthArmour.x != health_ || driverSync_.PlayerHealthArmour.y != armour_ || driverSync_.VehicleID != vehicleID || driverSync_.Velocity != syncVelocity || driverSync_.Health != vehicleHealth_;
 
 	auto generateDriverSyncBitStream = [&](NetworkBitStream& bs)
 	{
@@ -2260,7 +2267,7 @@ void NPC::sendDriverSync()
 		driverSync_.Rotation = rotation_;
 		driverSync_.PlayerHealthArmour.x = health_;
 		driverSync_.PlayerHealthArmour.y = armour_;
-		driverSync_.Velocity = velocity_;
+		driverSync_.Velocity = syncVelocity;
 		driverSync_.Health = vehicleHealth_;
 
 		driverSync_.Siren = uint8_t(useVehicleSiren_);
@@ -2755,21 +2762,12 @@ void NPC::tick(Microseconds elapsed, TimePoint now)
 	if (player_ && !markedForKick_)
 	{
 		auto state = player_->getState();
-		const bool canMove = state == PlayerState_OnFoot || state == PlayerState_Driver || state == PlayerState_Passenger || state == PlayerState_Spawned;
-		const bool fastNodeVehicleMove = state == PlayerState_Driver && vehicle_ && vehicleSeat_ == 0 && moving_ && playingNode_ && !nodePlayingPaused_;
-
-		// Keep node-driven vehicle movement aligned with server ticks instead of the slower
-		// general NPC update rate, which can make vehicle sync position steps visible.
-		if (fastNodeVehicleMove)
-		{
-			advance(now);
-		}
 
 		// Only process if it's needed based on update rate
 		if (duration_cast<Milliseconds>(now - lastUpdate_).count() > npcComponent_->getGeneralNPCUpdateRate())
 		{
 			// Only process the NPC if it is spawned
-			if (canMove)
+			if (state == PlayerState_OnFoot || state == PlayerState_Driver || state == PlayerState_Passenger || state == PlayerState_Spawned)
 			{
 				if (playback_ && playback_->isValid())
 				{
@@ -2835,7 +2833,7 @@ void NPC::tick(Microseconds elapsed, TimePoint now)
 						}
 					}
 
-					if (moving_ && !fastNodeVehicleMove)
+					if (moving_)
 					{
 						advance(now);
 					}
